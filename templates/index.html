@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Doc Cleaner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0d0f; --surface: #16161a; --border: #2a2a35;
+      --accent: #7fff6e; --danger: #ff6b6b; --text: #e8e8f0;
+      --muted: #666680; --radius: 12px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: 'Syne', sans-serif; min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; padding: 48px 16px;
+    }
+    header { text-align: center; margin-bottom: 48px; }
+    .badge {
+      display: inline-block; font-family: 'DM Mono', monospace;
+      font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase;
+      color: var(--accent); border: 1px solid var(--accent);
+      border-radius: 100px; padding: 4px 14px; margin-bottom: 20px;
+    }
+    h1 { font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 800; line-height: 1.1; letter-spacing: -0.03em; }
+    h1 span { color: var(--accent); }
+    .subtitle { margin-top: 12px; color: var(--muted); font-size: 1rem; max-width: 420px; margin-inline: auto; line-height: 1.6; }
+    .flash-list { list-style: none; width: 100%; max-width: 520px; margin-bottom: 24px; }
+    .flash-list li { padding: 12px 18px; border-radius: var(--radius); font-size: 0.9rem; margin-bottom: 8px; }
+    .flash-list li.error { background: rgba(255,107,107,0.12); border: 1px solid var(--danger); color: var(--danger); }
+    .flash-list li.success { background: rgba(127,255,110,0.10); border: 1px solid var(--accent); color: var(--accent); }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 40px; width: 100%; max-width: 520px; }
+    .drop-zone {
+      border: 2px dashed var(--border); border-radius: var(--radius);
+      padding: 48px 24px; text-align: center; cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: rgba(127,255,110,0.04); }
+    #file-input { display: none; }
+    .drop-icon { font-size: 2.5rem; margin-bottom: 12px; display: block; }
+    .drop-zone p { color: var(--muted); font-size: 0.9rem; line-height: 1.6; }
+    .drop-zone strong { color: var(--text); }
+    .file-chosen { margin-top: 16px; font-family: 'DM Mono', monospace; font-size: 0.8rem; color: var(--accent); display: none; }
+    .btn {
+      display: block; width: 100%; margin-top: 24px; padding: 14px;
+      background: var(--accent); color: #0d0d0f; font-family: 'Syne', sans-serif;
+      font-size: 1rem; font-weight: 700; border: none; border-radius: var(--radius);
+      cursor: pointer; transition: opacity 0.15s, transform 0.15s;
+    }
+    .btn:hover { opacity: 0.88; transform: translateY(-1px); }
+    .info-strip { margin-top: 32px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; text-align: center; }
+    .info-item { color: var(--muted); font-size: 0.8rem; line-height: 1.5; }
+    .info-item strong { display: block; color: var(--text); font-size: 1rem; margin-bottom: 4px; }
+    footer { margin-top: 48px; font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--muted); text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="badge">🔒 Metadata Anonymiser</div>
+    <h1>Strip Hidden<br><span>Identifiers</span> from PDFs</h1>
+    <p class="subtitle">Upload any PDF — we remove author names, software signatures, timestamps, and other identifying metadata.</p>
+  </header>
+
+  {% with messages = get_flashed_messages(with_categories=True) %}
+    {% if messages %}
+      <ul class="flash-list">
+        {% for category, message in messages %}
+          <li class="{{ category }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+
+  <div class="card">
+    <form method="POST" action="{{ url_for('upload_file') }}" enctype="multipart/form-data" id="upload-form">
+      <div class="drop-zone" id="drop-zone">
+        <span class="drop-icon">📄</span>
+        <p><strong>Click to choose a PDF</strong><br>or drag and drop it here</p>
+        <p class="file-chosen" id="file-name-display">No file selected</p>
+        <input type="file" name="file" id="file-input" accept=".pdf" required />
+      </div>
+      <button type="submit" class="btn" id="submit-btn">🧹 Clean Metadata</button>
+    </form>
+    <div class="info-strip">
+      <div class="info-item"><strong>PDF only</strong>Max 16 MB</div>
+      <div class="info-item"><strong>Processed locally</strong>Files deleted after cleaning</div>
+      <div class="info-item"><strong>Open source</strong>Inspect the code yourself</div>
+    </div>
+  </div>
+
+  <footer>Built with Flask + pypdf · Privacy Doc Cleaner v1.0</footer>
+
+  <script>
+    const dropZone  = document.getElementById("drop-zone");
+    const fileInput = document.getElementById("file-input");
+    const fileLabel = document.getElementById("file-name-display");
+    const submitBtn = document.getElementById("submit-btn");
+
+    dropZone.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files.length > 0) {
+        fileLabel.textContent = "✓ " + fileInput.files[0].name;
+        fileLabel.style.display = "block";
+      }
+    });
+    dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.classList.add("dragover"); });
+    dropZone.addEventListener("dragleave", () => { dropZone.classList.remove("dragover"); });
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("dragover");
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        fileInput.files = files;
+        fileLabel.textContent = "✓ " + files[0].name;
+        fileLabel.style.display = "block";
+      }
+    });
+    document.getElementById("upload-form").addEventListener("submit", () => {
+      submitBtn.textContent = "⏳ Cleaning…";
+      submitBtn.disabled = true;
+    });
+  </script>
+</body>
+</html>
