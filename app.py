@@ -10,7 +10,7 @@ from flask import (
     jsonify
 )
 from werkzeug.utils import secure_filename
-from cleaner import clean_pdf_metadata
+from cleaner import clean_file
 
 app = Flask(__name__)
 app.secret_key = "change-this-in-production-to-a-random-secret"
@@ -25,7 +25,7 @@ os.makedirs(CLEANED_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"]  = UPLOAD_FOLDER
 app.config["CLEANED_FOLDER"] = CLEANED_FOLDER
 
-ALLOWED_EXTENSIONS = {"pdf"}
+ALLOWED_EXTENSIONS ={"pdf", "docx", "xlsx", "pptx", "jpg", "jpeg", "png"}
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
 
@@ -62,7 +62,7 @@ def upload_file():
     cleaned_filename = "cleaned_" + filename
     cleaned_path = os.path.join(app.config["CLEANED_FOLDER"], cleaned_filename)
 
-    result = clean_pdf_metadata(upload_path, cleaned_path)
+    result = clean_file(upload_path, cleaned_path)
     os.remove(upload_path)
 
     if not result["success"]:

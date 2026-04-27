@@ -5,123 +5,842 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Privacy Doc Cleaner</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
   <style>
+    /* ══════════════════════════════════════════
+       DESIGN TOKENS — change colours here
+       ══════════════════════════════════════════ */
     :root {
-      --bg: #0d0d0f; --surface: #16161a; --border: #2a2a35;
-      --accent: #7fff6e; --danger: #ff6b6b; --text: #e8e8f0;
-      --muted: #666680; --radius: 12px;
+      --purple:  #7c3aed;
+      --pink:    #ec4899;
+      --teal:    #0ea5e9;
+      --green:   #10b981;
+      --orange:  #f97316;
+      --bg:      #f8f7ff;
+      --white:   #ffffff;
+      --dark:    #1a1035;
+      --mid:     #6b7280;
+      --light:   #e5e7eb;
+      --radius:  16px;
+      --shadow:  0 8px 32px rgba(124,58,237,0.10);
     }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      background: var(--bg); color: var(--text);
-      font-family: 'Syne', sans-serif; min-height: 100vh;
-      display: flex; flex-direction: column; align-items: center; padding: 48px 16px;
+      font-family: 'Sora', sans-serif;
+      background: var(--bg);
+      color: var(--dark);
+      min-height: 100vh;
     }
-    header { text-align: center; margin-bottom: 48px; }
-    .badge {
-      display: inline-block; font-family: 'DM Mono', monospace;
-      font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase;
-      color: var(--accent); border: 1px solid var(--accent);
-      border-radius: 100px; padding: 4px 14px; margin-bottom: 20px;
+
+    /* ══════════════════════════════════════════
+       LOADING SCREEN
+       Shows while file is being cleaned.
+       Hidden by default, shown by JS on submit.
+       ══════════════════════════════════════════ */
+    #loading-screen {
+      display: none;              /* hidden until form submits */
+      position: fixed;
+      inset: 0;
+      background: rgba(248,247,255,0.96);
+      backdrop-filter: blur(8px);
+      z-index: 999;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 28px;
     }
-    h1 { font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 800; line-height: 1.1; letter-spacing: -0.03em; }
-    h1 span { color: var(--accent); }
-    .subtitle { margin-top: 12px; color: var(--muted); font-size: 1rem; max-width: 420px; margin-inline: auto; line-height: 1.6; }
-    .flash-list { list-style: none; width: 100%; max-width: 520px; margin-bottom: 24px; }
-    .flash-list li { padding: 12px 18px; border-radius: var(--radius); font-size: 0.9rem; margin-bottom: 8px; }
-    .flash-list li.error { background: rgba(255,107,107,0.12); border: 1px solid var(--danger); color: var(--danger); }
-    .flash-list li.success { background: rgba(127,255,110,0.10); border: 1px solid var(--accent); color: var(--accent); }
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 40px; width: 100%; max-width: 520px; }
+
+    #loading-screen.active { display: flex; }
+
+    /* Spinning ring animation */
+    .spinner {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      border: 4px solid var(--light);
+      border-top-color: var(--purple);
+      border-right-color: var(--pink);
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-text {
+      text-align: center;
+    }
+
+    .loading-text h3 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--dark);
+      margin-bottom: 6px;
+    }
+
+    .loading-text p {
+      font-size: 14px;
+      color: var(--mid);
+    }
+
+    /* Animated steps shown during loading */
+    .loading-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 280px;
+    }
+
+    .loading-step {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--mid);
+      opacity: 0;
+      transform: translateX(-10px);
+      animation: stepIn 0.4s forwards;
+    }
+
+    .loading-step:nth-child(1) { animation-delay: 0.3s; }
+    .loading-step:nth-child(2) { animation-delay: 0.9s; }
+    .loading-step:nth-child(3) { animation-delay: 1.5s; }
+    .loading-step:nth-child(4) { animation-delay: 2.1s; }
+
+    @keyframes stepIn {
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    .step-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ══════════════════════════════════════════
+       NAVIGATION BAR
+       ══════════════════════════════════════════ */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(255,255,255,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(124,58,237,0.08);
+      padding: 0 32px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* Logo in the nav */
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+
+    .nav-logo-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--purple), var(--pink));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .nav-logo-text {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--dark);
+    }
+
+    .nav-logo-text span {
+      color: var(--purple);
+    }
+
+    /* Nav links */
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--mid);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover { color: var(--purple); }
+
+    /* Nav badge showing what it does */
+    .nav-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      background: linear-gradient(135deg, #ede9fe, #fce7f3);
+      color: var(--purple);
+      border-radius: 100px;
+      padding: 4px 12px;
+      font-weight: 500;
+    }
+
+    /* ══════════════════════════════════════════
+       HERO SECTION
+       ══════════════════════════════════════════ */
+    .hero {
+      padding: 72px 24px 40px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Decorative blobs in the background */
+    .blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(60px);
+      opacity: 0.18;
+      pointer-events: none;
+    }
+
+    .blob-1 {
+      width: 400px; height: 400px;
+      background: var(--purple);
+      top: -100px; left: -80px;
+    }
+
+    .blob-2 {
+      width: 300px; height: 300px;
+      background: var(--pink);
+      top: -60px; right: -60px;
+    }
+
+    .blob-3 {
+      width: 250px; height: 250px;
+      background: var(--teal);
+      bottom: -40px; left: 50%;
+      transform: translateX(-50%);
+    }
+
+    /* Small top pill */
+    .hero-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: white;
+      border: 1px solid rgba(124,58,237,0.2);
+      border-radius: 100px;
+      padding: 6px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--purple);
+      margin-bottom: 24px;
+      position: relative;
+    }
+
+    .hero-pill-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(0.8); }
+    }
+
+    /* Main heading */
+    .hero h1 {
+      font-size: clamp(32px, 5vw, 56px);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+      color: var(--dark);
+      margin-bottom: 16px;
+      position: relative;
+    }
+
+    /* Gradient text on part of heading */
+    .hero h1 .grad {
+      background: linear-gradient(135deg, var(--purple) 0%, var(--pink) 50%, var(--orange) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-sub {
+      font-size: 17px;
+      color: var(--mid);
+      max-width: 440px;
+      margin: 0 auto 40px;
+      line-height: 1.7;
+      position: relative;
+    }
+
+    /* ══════════════════════════════════════════
+       UPLOAD CARD
+       ══════════════════════════════════════════ */
+    .upload-wrap {
+      display: flex;
+      justify-content: center;
+      padding: 0 24px 40px;
+    }
+
+    .upload-card {
+      background: var(--white);
+      border-radius: 24px;
+      padding: 36px;
+      width: 100%;
+      max-width: 520px;
+      box-shadow: var(--shadow);
+      border: 1px solid rgba(124,58,237,0.08);
+    }
+
+    /* Drop zone */
     .drop-zone {
-      border: 2px dashed var(--border); border-radius: var(--radius);
-      padding: 48px 24px; text-align: center; cursor: pointer;
-      transition: border-color 0.2s, background 0.2s;
+      border: 2px dashed #c4b5fd;
+      border-radius: var(--radius);
+      padding: 52px 24px;
+      text-align: center;
+      cursor: pointer;
+      background: linear-gradient(135deg, #faf5ff, #fdf2f8);
+      transition: all 0.25s;
+      position: relative;
     }
-    .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: rgba(127,255,110,0.04); }
+
+    .drop-zone:hover,
+    .drop-zone.dragover {
+      border-color: var(--purple);
+      background: linear-gradient(135deg, #ede9fe, #fce7f3);
+      transform: scale(1.01);
+    }
+
+    /* The big colourful icon */
+    .drop-icon-wrap {
+      width: 72px;
+      height: 72px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, #ede9fe, #fce7f3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      font-size: 32px;
+      transition: transform 0.25s;
+    }
+
+    .drop-zone:hover .drop-icon-wrap { transform: translateY(-4px) rotate(3deg); }
+
     #file-input { display: none; }
-    .drop-icon { font-size: 2.5rem; margin-bottom: 12px; display: block; }
-    .drop-zone p { color: var(--muted); font-size: 0.9rem; line-height: 1.6; }
-    .drop-zone strong { color: var(--text); }
-    .file-chosen { margin-top: 16px; font-family: 'DM Mono', monospace; font-size: 0.8rem; color: var(--accent); display: none; }
-    .btn {
-      display: block; width: 100%; margin-top: 24px; padding: 14px;
-      background: var(--accent); color: #0d0d0f; font-family: 'Syne', sans-serif;
-      font-size: 1rem; font-weight: 700; border: none; border-radius: var(--radius);
-      cursor: pointer; transition: opacity 0.15s, transform 0.15s;
+
+    .drop-zone h3 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--dark);
+      margin-bottom: 6px;
     }
-    .btn:hover { opacity: 0.88; transform: translateY(-1px); }
-    .info-strip { margin-top: 32px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; text-align: center; }
-    .info-item { color: var(--muted); font-size: 0.8rem; line-height: 1.5; }
-    .info-item strong { display: block; color: var(--text); font-size: 1rem; margin-bottom: 4px; }
-    footer { margin-top: 48px; font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--muted); text-align: center; }
+
+    .drop-zone p {
+      font-size: 13px;
+      color: var(--mid);
+      line-height: 1.6;
+    }
+
+    /* Shown filename */
+    .file-chosen-wrap {
+      display: none;
+      margin-top: 16px;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .file-chosen-wrap.show { display: flex; }
+
+    .file-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 100px;
+      padding: 5px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #15803d;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Submit button */
+    .btn-submit {
+      display: block;
+      width: 100%;
+      margin-top: 20px;
+      padding: 16px;
+      background: linear-gradient(135deg, var(--purple), var(--pink));
+      color: white;
+      font-family: 'Sora', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      letter-spacing: 0.01em;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-submit::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: white;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .btn-submit:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(124,58,237,0.35); }
+    .btn-submit:active { transform: translateY(0); }
+    .btn-submit:disabled { opacity: 0.65; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    /* File size note */
+    .upload-note {
+      text-align: center;
+      margin-top: 14px;
+      font-size: 12px;
+      color: #9ca3af;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* ══════════════════════════════════════════
+       FLASH MESSAGES
+       ══════════════════════════════════════════ */
+    .flash-wrap {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .flash-list { list-style: none; }
+
+    .flash-list li {
+      padding: 12px 18px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 10px;
+    }
+
+    .flash-list li.error {
+      background: #fff1f2;
+      border: 1px solid #fecdd3;
+      color: #be123c;
+    }
+
+    .flash-list li.success {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #15803d;
+    }
+
+    /* ══════════════════════════════════════════
+       FEATURE STRIP
+       ══════════════════════════════════════════ */
+    .features {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding: 0 24px 48px;
+    }
+
+    .feature-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: white;
+      border: 1px solid var(--light);
+      border-radius: 100px;
+      padding: 8px 18px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--mid);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+
+    .feature-pill-icon {
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+    }
+
+    /* ══════════════════════════════════════════
+       WHAT GETS REMOVED SECTION
+       ══════════════════════════════════════════ */
+    .what-section {
+      padding: 0 24px 64px;
+      max-width: 560px;
+      margin: 0 auto;
+    }
+
+    .section-label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--mid);
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .what-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .what-card {
+      background: white;
+      border-radius: var(--radius);
+      padding: 18px;
+      border: 1px solid var(--light);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .what-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    }
+
+    /* Coloured top accent bar */
+    .what-card.a { border-top: 3px solid var(--purple); }
+    .what-card.b { border-top: 3px solid var(--pink); }
+    .what-card.c { border-top: 3px solid var(--orange); }
+    .what-card.d { border-top: 3px solid var(--green); }
+    .what-card.e { border-top: 3px solid var(--teal); }
+    .what-card.f { border-top: 3px solid #f59e0b; }
+
+    .what-emoji { font-size: 22px; margin-bottom: 10px; }
+
+    .what-card strong {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--dark);
+      margin-bottom: 4px;
+    }
+
+    .what-card p {
+      font-size: 12px;
+      color: var(--mid);
+      line-height: 1.5;
+    }
+
+    /* Metadata example */
+    .what-card code {
+      display: block;
+      margin-top: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: #9ca3af;
+      background: #f9fafb;
+      border-radius: 6px;
+      padding: 4px 8px;
+    }
+
+    /* ══════════════════════════════════════════
+       FOOTER
+       ══════════════════════════════════════════ */
+    footer {
+      border-top: 1px solid var(--light);
+      padding: 24px;
+      text-align: center;
+      font-size: 12px;
+      color: #9ca3af;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    footer a { color: var(--purple); text-decoration: none; }
   </style>
 </head>
 <body>
-  <header>
-    <div class="badge">🔒 Metadata Anonymiser</div>
-    <h1>Strip Hidden<br><span>Identifiers</span> from PDFs</h1>
-    <p class="subtitle">Upload any PDF — we remove author names, software signatures, timestamps, and other identifying metadata.</p>
-  </header>
 
-  {% with messages = get_flashed_messages(with_categories=True) %}
-    {% if messages %}
-      <ul class="flash-list">
-        {% for category, message in messages %}
-          <li class="{{ category }}">{{ message }}</li>
-        {% endfor %}
-      </ul>
-    {% endif %}
-  {% endwith %}
-
-  <div class="card">
-    <form method="POST" action="{{ url_for('upload_file') }}" enctype="multipart/form-data" id="upload-form">
-      <div class="drop-zone" id="drop-zone">
-        <span class="drop-icon">📄</span>
-        <p><strong>Click to choose a PDF</strong><br>or drag and drop it here</p>
-        <p class="file-chosen" id="file-name-display">No file selected</p>
-        <input type="file" name="file" id="file-input" accept=".pdf" required />
+  <!-- ══════════════════════════════════════════
+       LOADING SCREEN
+       Shown when form is submitted.
+       Hidden by default — JS adds .active class.
+       ══════════════════════════════════════════ -->
+  <div id="loading-screen">
+    <div class="spinner"></div>
+    <div class="loading-text">
+      <h3>Cleaning your PDF…</h3>
+      <p>Stripping all identifying metadata</p>
+    </div>
+    <div class="loading-steps">
+      <div class="loading-step">
+        <span class="step-dot" style="background:#7c3aed"></span>
+        Opening your PDF file
       </div>
-      <button type="submit" class="btn" id="submit-btn">🧹 Clean Metadata</button>
-    </form>
-    <div class="info-strip">
-      <div class="info-item"><strong>PDF only</strong>Max 16 MB</div>
-      <div class="info-item"><strong>Processed locally</strong>Files deleted after cleaning</div>
-      <div class="info-item"><strong>Open source</strong>Inspect the code yourself</div>
+      <div class="loading-step">
+        <span class="step-dot" style="background:#ec4899"></span>
+        Reading hidden metadata fields
+      </div>
+      <div class="loading-step">
+        <span class="step-dot" style="background:#0ea5e9"></span>
+        Copying pages to clean document
+      </div>
+      <div class="loading-step">
+        <span class="step-dot" style="background:#10b981"></span>
+        Removing all identifiers
+      </div>
     </div>
   </div>
 
-  <footer>Built with Flask + pypdf · Privacy Doc Cleaner v1.0</footer>
+  <!-- ══════════════════════════════════════════
+       NAVIGATION BAR
+       ══════════════════════════════════════════ -->
+  <nav>
+    <a href="{{ url_for('index') }}" class="nav-logo">
+      <div class="nav-logo-icon">🔒</div>
+      <span class="nav-logo-text">Privacy<span>Doc</span></span>
+    </a>
+
+    <ul class="nav-links">
+      <li><a href="{{ url_for('index') }}">Home</a></li>
+      <li><span class="nav-badge">PDF Cleaner v1.0</span></li>
+    </ul>
+  </nav>
+
+  <!-- ══════════════════════════════════════════
+       HERO
+       ══════════════════════════════════════════ -->
+  <section class="hero">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+
+    <div class="hero-pill">
+      <span class="hero-pill-dot"></span>
+      Free · Private · No sign up needed
+    </div>
+
+    <h1>
+      Your PDFs carry<br>
+      <span class="grad">hidden secrets.</span><br>
+      We remove them.
+    </h1>
+
+    <p class="hero-sub">
+      Every PDF you create secretly stores your name, software,
+      company, and timestamps. Upload yours and we'll wipe it clean
+      in seconds — invisibly and permanently.
+    </p>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       FLASH MESSAGES
+       ══════════════════════════════════════════ -->
+  {% with messages = get_flashed_messages(with_categories=True) %}
+    {% if messages %}
+      <div class="flash-wrap">
+        <ul class="flash-list">
+          {% for category, message in messages %}
+            <li class="{{ category }}">{{ message }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- ══════════════════════════════════════════
+       UPLOAD CARD
+       ══════════════════════════════════════════ -->
+  <div class="upload-wrap">
+    <div class="upload-card">
+      <!--
+        enctype="multipart/form-data" — required for file uploads
+        url_for('upload_file') — safely generates the /upload URL
+      -->
+      <form
+        method="POST"
+        action="{{ url_for('upload_file') }}"
+        enctype="multipart/form-data"
+        id="upload-form"
+      >
+        <div class="drop-zone" id="drop-zone">
+          <div class="drop-icon-wrap">📄</div>
+          <h3>Drop your PDF here</h3>
+          <p>or click anywhere to browse your files</p>
+
+          <!-- Hidden real file input — triggered by clicking drop zone -->
+          <input type="file" name="file" id="file-input" accept=".pdf,.docx,.xlsx,.pptx,.jpg,.jpeg,.png"
+
+          <!-- Shows selected filename -->
+          <div class="file-chosen-wrap" id="file-chosen-wrap">
+            <span class="file-chip" id="file-chip">📎 filename.pdf</span>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-submit" id="submit-btn">
+          ✨ &nbsp;Clean my PDF — remove all hidden data
+        </button>
+      </form>
+
+      <p class="upload-note">PDF files only &nbsp;·&nbsp; max 16 MB &nbsp;·&nbsp; file deleted immediately after</p>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       FEATURE PILLS
+       ══════════════════════════════════════════ -->
+  <div class="features">
+    <div class="feature-pill">
+      <span class="feature-pill-icon" style="background:#dcfce7; color:#15803d;">✓</span>
+      100% private
+    </div>
+    <div class="feature-pill">
+      <span class="feature-pill-icon" style="background:#ede9fe; color:#7c3aed;">🔒</span>
+      No data stored
+    </div>
+    <div class="feature-pill">
+      <span class="feature-pill-icon" style="background:#fce7f3; color:#be185d;">⚡</span>
+      Done in seconds
+    </div>
+    <div class="feature-pill">
+      <span class="feature-pill-icon" style="background:#e0f2fe; color:#0369a1;">👁</span>
+      See before &amp; after
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       WHAT GETS REMOVED
+       ══════════════════════════════════════════ -->
+  <div class="what-section">
+    <p class="section-label">What gets stripped from your file</p>
+    <div class="what-grid">
+
+      <div class="what-card a">
+        <div class="what-emoji">👤</div>
+        <strong>Your name</strong>
+        <p>Author field embedded by your OS account</p>
+        <code>/Author → "Jane Smith"</code>
+      </div>
+
+      <div class="what-card b">
+        <div class="what-emoji">💻</div>
+        <strong>Software version</strong>
+        <p>App and version used to create the file</p>
+        <code>/Creator → "Word 16.0"</code>
+      </div>
+
+      <div class="what-card c">
+        <div class="what-emoji">🕐</div>
+        <strong>Timestamps</strong>
+        <p>Exact creation date, time, and timezone</p>
+        <code>/CreationDate → "D:2024..."</code>
+      </div>
+
+      <div class="what-card d">
+        <div class="what-emoji">🏢</div>
+        <strong>Company name</strong>
+        <p>Organisation from your Office account</p>
+        <code>/Company → "Acme Corp"</code>
+      </div>
+
+      <div class="what-card e">
+        <div class="what-emoji">🖥</div>
+        <strong>Operating system</strong>
+        <p>macOS, Windows version used</p>
+        <code>/Producer → "macOS Quartz"</code>
+      </div>
+
+      <div class="what-card f">
+        <div class="what-emoji">👔</div>
+        <strong>Manager details</strong>
+        <p>Manager name from your Office profile</p>
+        <code>/Manager → "John Manager"</code>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       FOOTER
+       ══════════════════════════════════════════ -->
+  <footer>
+    Built with Flask + pypdf &nbsp;·&nbsp; Privacy Doc Cleaner v1.0
+    &nbsp;·&nbsp; <a href="https://github.com">View on GitHub</a>
+  </footer>
 
   <script>
+    // ── File input and drag-and-drop logic ──
+
     const dropZone  = document.getElementById("drop-zone");
     const fileInput = document.getElementById("file-input");
-    const fileLabel = document.getElementById("file-name-display");
+    const fileChosen = document.getElementById("file-chosen-wrap");
+    const fileChip  = document.getElementById("file-chip");
     const submitBtn = document.getElementById("submit-btn");
+    const loadingScreen = document.getElementById("loading-screen");
 
+    // Click anywhere on drop zone → open file picker
     dropZone.addEventListener("click", () => fileInput.click());
+
+    // File selected → show filename chip
     fileInput.addEventListener("change", () => {
       if (fileInput.files.length > 0) {
-        fileLabel.textContent = "✓ " + fileInput.files[0].name;
-        fileLabel.style.display = "block";
+        showFile(fileInput.files[0].name);
       }
     });
-    dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.classList.add("dragover"); });
-    dropZone.addEventListener("dragleave", () => { dropZone.classList.remove("dragover"); });
+
+    function showFile(name) {
+      fileChip.textContent = "📎  " + name;
+      fileChosen.classList.add("show");
+      dropZone.style.borderColor = "#7c3aed";
+    }
+
+    // Drag over styling
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("dragover");
+    });
+
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.classList.remove("dragover");
+    });
+
+    // Drop → assign file to hidden input
     dropZone.addEventListener("drop", (e) => {
       e.preventDefault();
       dropZone.classList.remove("dragover");
       const files = e.dataTransfer.files;
       if (files.length > 0) {
         fileInput.files = files;
-        fileLabel.textContent = "✓ " + files[0].name;
-        fileLabel.style.display = "block";
+        showFile(files[0].name);
       }
     });
+
+    // Form submit → show loading screen
     document.getElementById("upload-form").addEventListener("submit", () => {
-      submitBtn.textContent = "⏳ Cleaning…";
+      loadingScreen.classList.add("active");
       submitBtn.disabled = true;
     });
   </script>
+
 </body>
 </html>
